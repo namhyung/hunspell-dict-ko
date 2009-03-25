@@ -18,7 +18,7 @@
 #
 # The Initial Developer of the Original Code is
 # Changwoo Ryu.
-# Portions created by the Initial Developer are Copyright (C) 2008
+# Portions created by the Initial Developer are Copyright (C) 2008, 2009
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s): Changwoo Ryu <cwryu@debian.org>
@@ -44,8 +44,11 @@ import re
 import unicodedata
 
 import config
+import flags
 from suffixdata import groups
 
+def nfd(u8str):
+    return unicodedata.normalize('NFD', u8str.decode('UTF-8')).encode('UTF-8')
 def NFD(unistr):
     return unicodedata.normalize('NFD', unistr)
 def NFC(unistr):
@@ -57,7 +60,7 @@ def expand_by_cond():
         for klass in groups[key]:
             new_rules = []
             for rule in klass['rules']:
-                if type(rule[1]) == type([]):
+                if isinstance(rule[1], list) :
                     for c in rule[1]:
                         new_rules.append([rule[0], c] + rule[2:])
                 else:
@@ -100,7 +103,8 @@ def expand_by_link():
                 if (('-' in k['after'] or last in k['after']) and
                     (not k.has_key('notafter') or not last in k['notafter'])):
                     for r in k['rules']:
-                        if re.match(NFD(u'.*' + r[1] + '$'), NFD(last[:-1])):
+                        if re.match(NFD(u'.*' + r[1] + '$'),
+                                    NFD(last[:-1].decode('utf-8'))):
                             rules.append(r)
         return rules
 
@@ -143,7 +147,6 @@ expand_by_link()
 klasses = []
 for key in groups.keys():
     klasses += groups[key]
-del groups
 
 # 선어말어미 연결 정보도 필요 없다.
 for klass in klasses:
@@ -162,22 +165,22 @@ def eq_klass_cond(a, b):
         elif a.has_key(condname) or b.has_key(condname):
             return False
     return True
-new_klasses = []
-for klass in klasses:           # 무식한 방법이지만 간단히...
-    for new_klass in new_klasses:
-        if eq_klass_cond(klass, new_klass):
-            new_klass['rules'] += klass['rules']
-            break
-    else:
-        new_klasses.append(klass)        
-klasses = new_klasses
-del new_klasses
+# new_klasses = []
+# for klass in klasses:           # 무식한 방법이지만 간단히...
+#     for new_klass in new_klasses:
+#         if eq_klass_cond(klass, new_klass):
+#             new_klass['rules'] += klass['rules']
+#             break
+#     else:
+#         new_klasses.append(klass)        
+# klasses = new_klasses
+# del new_klasses
 
 # flag 부착
 def attach_flags():
     count = 0
     for klass in klasses:
-        klass['flag'] = (config.endings_flag_start + count)
+        klass['flag'] = (flags.endings_flag_start + count)
         count = count + 1
 attach_flags()
 
@@ -185,21 +188,29 @@ attach_flags()
 ######################################################################
 ## 외부 사용
 
-def write_suffixes(file):
+def get_rules_string(flagaliases):
+    rule_strings = []
     for klass in klasses:
         flag = klass['flag']
-        file.write('SFX %d Y %d\n' % (flag, len(klass['rules'])))
+        rule_strings.append('SFX %d Y %d' % (flag, len(klass['rules'])))
+
         for r in klass['rules']:
             suffix = r[0][1:] # 앞에 '-' 빼기
             condition = r[1] + '다'
             strip = r[2] + '다'
             try:
-                cont = ','.join(['%d' % c for c in r[3]])
-                file.write(NFD('SFX %d %s %s/%s %s\n' %
-                               (flag, strip, suffix, cont, condition)))
+                cont_flags = r[3]
+                if flagaliases:
+                    if not cont_flags in flagaliases:
+                        flagaliases.append(cont_flags)
+                    cont = '/%d' % (flagaliases.index(cont_flags) + 1)
+                else:
+                    cont = '/' + ','.join(['%d' % c for c in cont_flags])
             except IndexError:
-                file.write(NFD('SFX %d %s %s %s\n' %
-                               (flag, strip, suffix, condition)))
+                cont = ''
+            rule_strings.append(nfd('SFX %d %s %s%s %s' %
+                                    (flag, strip, suffix, cont, condition)))
+    return '\n'.join(rule_strings)
 
 def class_match_word(klass, word, po, props):
     if (klass.has_key('after') and
@@ -217,11 +228,17 @@ def class_match_word(klass, word, po, props):
             if ('#'+prop) in klass['cond']:
                 break;
         else:
-            return False
+            regexps = [r for r in klass['cond'] if r[0] == '^']
+            if not regexps or not [1 for r in regexps if re.match(r, word)]:
+                return False
     if klass.has_key('notcond'):
         for prop in props:
             if ('#'+prop) in klass['notcond']:
                 return False;
+        else:
+            regexps = [r for r in klass['notcond'] if r[0] == '^']
+            if regexps and [1 for r in regexps if re.match(r, word)]:
+                return False
     return True
 
 # 해당되는 flag 찾기
@@ -231,26 +248,36 @@ def find_flags(word, po, props):
         if class_match_word(klass, word, po, props):
             result.append(klass['flag'])
     return result
-            
-    
-# 가능한 모든 활용 형태 만들기
-def make_conjugations(word, po, props):
+
+# 특정 어미의 활용형태
+def make_conjugations(word, po, props, suffixname=None):
     result = []
-    for klass in klasses:
+    uniword = unicode(word, 'utf-8')
+    if suffixname:
+        search_klasses = groups[suffixname]
+    else:
+        search_klasses = klasses
+    for klass in search_klasses:
         if not class_match_word(klass, word, po, props):
             continue
         
         for r in klass['rules']:
-            if re.match(NFD(u'.*' + r[1] + '다$'), NFD(word)):
-                if r[2]:
-                    striplen = len(NFD(r[2] + u'다'))
+            suffix = r[0]
+            condition = r[1]
+            strip = r[2]
+            if re.match(NFD(u'.*' + condition + '다$'), NFD(uniword)):
+                if strip:
+                    striplen = len(NFD(strip + u'다'))
                 else:
                     striplen = len(NFD(u'다'))
+                conj = (NFD(uniword)[:-striplen] + suffix[1:]).encode('utf-8')
                 try:
-                    cont = '/' + ','.join(['%d' % c for c in r[3]])
-                except:
-                    cont = ''
-
-                result.append(NFC(NFD(word)[:-striplen] + r[0][1:]) + cont)
+                    conj += '/' + ','.join([str(c) for c in r[3]])
+                except IndexError:
+                    pass
+                result.append(conj)
     return result
 
+# 가능한 모든 활용 형태 만들기
+def make_all_conjugations(word, po, props):
+    return make_conjugations(word, po, props, None)

@@ -1,5 +1,6 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
-# 사전 파일 생성
+# XML 변환
 #
 # ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -43,6 +44,8 @@ import unicodedata
 reload(sys)
 sys.setdefaultencoding('UTF-8')
 
+from datetime import datetime, tzinfo, timedelta
+
 def nfd(u8str):
     return unicodedata.normalize('NFD', u8str.decode('UTF-8')).encode('UTF-8')
 def out(u8str):
@@ -51,9 +54,6 @@ def outnfd(u8str):
     return sys.stdout.write(nfd(u8str))
 def warn(u8str):
     return sys.stderr.write(u8str + '\n')
-
-import config
-import suffix
 
 class ParseError(Exception):
     pass
@@ -70,7 +70,9 @@ class Dictionary:
         for lineno in range(len(lines)):
             line = lines[lineno]
             # comments out
-            line = line.split('#', 1)[0]
+            #line = line.split('#', 1)[0]
+            if line[0] == '#':
+                continue
             # remove whitespaces
             line = line.strip()
             if line == '':
@@ -99,51 +101,75 @@ class Dictionary:
         return len(self.words)
 
     def output(self, file):
-        file.write('%d\n' % len(self))
+        file.write('<entries>\n')
         for word in sorted(list(self.words)):
             word.output(file)
+        file.write('</entries>\n')
 
 class Word:
     def __init__(self, line):
         self.word = ''
         self.meta = ''
         self.po = ''
+        self.pos = ''
         self.idno = 0
         self.st = ''
         self.props = set()
-        self.flags = []
+        self.etym = ''
+        self.orig = ''
+        self.comment = ''
 
         # parse a dictionary line
 
         def load_po(self, val):
             self.po = val
-            # default properties
-            if val == 'verb':
-                self.props.add('용언')
-                self.props.add('동사')
-            elif val == 'adjective':
-                self.props.add('용언')
-                self.props.add('형용사')
+            pos_values = {
+            'noun': '명사',
+            'pronoun': '대명사',
+            'verb': '동사',
+            'adjective': '형용사',
+            'interjection': '감탄사',
+            'determiner': '관형사',
+            'adverb': '부사',
+            'counter': '특수:단위',
+            'plural_suffix': '특수:복수접미사',
+            'pseudo_alpha': '특수:알파벳',
+            'pseudo_digit': '특수:숫자',
+            }
+            try:
+                self.pos = pos_values[val]
+            except KeyError:
+                raise ParseError, 'Unknown PO "%s"' % val
+
         def load_idno(self, val):
             self.idno = int(val)
         def load_st(self, val):
             self.st = val
         def load_meta(self, val):
             self.meta = val
+            if val == 'forbidden':
+                self.pos = '특수:금지어'
         def load_prop(self, val):
             for p in val.split(','):
                 self.props.add(p)
-        def load_none(self, val):
-            pass
+        def load_from(self, val):
+            self.etym = val
+        def load_orig(self, val):
+            self.orig = val
 
         info_load_funcs = { 'po': load_po,
                             'st': load_st,
                             'idno': load_idno,
                             'meta': load_meta,
                             'prop': load_prop,
-                            'from': load_none,
-                            'orig': load_none,
+                            'from': load_from,
+                            'orig': load_orig,
                           }
+
+        s = line.split('#', 1)
+        if len(s) > 1:
+            self.comment = s[1].strip()
+        line = s[0]
 
         data = line.split()
         self.word, infos = data[0], data[1:]
@@ -164,7 +190,6 @@ class Word:
             self.props.add('너라불규칙')
 
         self.verify_props()
-        self.compute_flags()
                 
     def is_forbidden(self):
         return self.meta == 'forbidden'
@@ -195,48 +220,27 @@ class Word:
             (not 'ㅂ불규칙' in self.props)):
             raise ParseError, 'ㅂ불규칙 용언으로 보이지만 속성 없음'
 
-    def compute_flags(self):
-        meta_default_flags = {
-            'forbidden': [ config.forbidden_flag ],
-            }
-
-        po_default_flags = {
-            'noun': [ config.josa_flag ],
-            'pronoun': [ config.josa_flag ],
-            'counter': [ config.josa_flag, config.counter_flag ],
-            'plural_suffix': [ config.josa_flag, config.plural_suffix_flag ],
-            'pseudo_alpha': [ config.alpha_flag, config.josa_flag ],
-            'pseudo_digit': [ config.josa_flag, config.digit_flag ],
-            }
-        self.flags = []
-        try:
-            self.flags += meta_default_flags[self.meta]
-        except KeyError:
-            pass
-        try:
-            self.flags += po_default_flags[self.po]
-        except KeyError:
-            pass
-
-        if self.po == 'noun' or self.po == 'pronoun':
-            if '가산명사' in self.props:
-                self.flags.append(config.countable_noun_flag)
-
-        if self.po == 'verb' or self.po == 'adjective':
-            p = { 'verb': '동사', 'adjective': '형용사' }
-            self.flags = suffix.find_flags(self.word, p[self.po], self.props)
-
-        self.flags.sort()
-
     def output(self, file):
-        line = self.word
-        if self.flags:
-            line += '/' + ','.join([('%d' % f) for f in self.flags])
-        if self.po:
-            line += ' po:%s' % self.po
+        file.write('<Entry>\n')
+        file.write('  <word>%s</word>\n' % self.word)
+        if self.pos:
+            file.write('  <pos>%s</pos>\n' % self.pos)
+        else:
+            file.write('  <pos>특수:없음</pos>\n')
         if self.st:
-            line += ' st:%s' % self.st
-        file.write(nfd(line) + '\n')
+            file.write('  <stem>%s</stem>\n' % self.st)
+        if len(self.props) > 0:
+            file.write('  <props>')
+            for prop in self.props:
+                file.write('<prop>%s</prop>' % prop)
+            file.write('</props>\n')
+        if self.etym:
+            file.write('  <from>%s</from>\n' % self.etym)
+        if self.orig:
+            file.write('  <orig>%s</orig>\n' % self.orig)
+        if self.comment:
+            file.write('  <comment>%s</comment>\n' % self.comment)
+        file.write('</Entry>\n')
 
 if __name__ == '__main__':
     filenames = sys.argv[1:]
