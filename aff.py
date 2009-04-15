@@ -53,6 +53,10 @@ def NFC(unistr):
     return unicodedata.normalize('NFC', unistr)
 
 # 빈도가 높은 글자를 앞에 쓸 수록 처리 속도 향상
+# 
+# NOTE: 단, 모음이 틀리는 경우가 보통 더 많으므로 더 나은 단어가 앞에
+# 추천 단어의 앞에 나오도록 모음을 먼저 쓴다.
+#
 # 2008년 12월 현재 한국어 위키백과의 빈도:
 #
 # U+110b: 12945437 (HANGUL CHOSEONG IEUNG)
@@ -122,13 +126,14 @@ def NFC(unistr):
 # U+11b4: 544 (HANGUL JONGSEONG RIEUL-THIEUTH)
 # U+11b3: 523 (HANGUL JONGSEONG RIEUL-SIOS)
 # U+11b5: 495 (HANGUL JONGSEONG RIEUL-PHIEUPH)
-TRYCHARS = (u'\u110b\u1161\u11ab\u1175\u1100\u1173\u1169\u1109\u1165\u11bc' +
-            u'\u110c\u116e\u1105\u1103\u11af\u1112\u1167\u11a8\u1102\u1107' +
-            u'\u1166\u1106\u1162\u11b7\u110e\u1110\u1174\u116a\u1111\u110f' +
-            u'\u11bb\u116d\u11b8\u1172\u116f\u116c\u11ba\u1171\u1163\u1168' +
-            u'\u1104\u1101\u11c0\u110a\u11ad\u110d\u11ae\u11b9\u1170\u11be' +
-            u'\u11c1\u11bd\u11c2\u1108\u11b0\u11b1\u116b\u11a9\u11b2\u11b6' +
-            u'\u1164\u11ac\u11aa\u11bf\u11b4\u11b3\u11b5')
+TRYCHARS = (u'\u1161\u1175\u1173\u1169\u1165\u116e\u1167\u1166\u1162\u1174' +
+            u'\u116a\u116d\u1172\u116f\u116c\u1171\u1163\u1168\u1170\u116b' +
+            u'\u1164' +
+            u'\u110b\u11ab\u1100\u1109\u11bc\u110c\u1105\u1103\u11af\u1112' + 
+            u'\u11a8\u1102\u1107\u1106\u11b7\u110e\u1110\u1111\u110f\u11bb' + 
+            u'\u11b8\u11ba\u1104\u1101\u11c0\u110a\u11ad\u110d\u11ae\u11b9' + 
+            u'\u11be\u11c1\u11bd\u11c2\u1108\u11b0\u11b1\u11a9\u11b2\u11b6' + 
+            u'\u11ac\u11aa\u11bf\u11b4\u11b3\u11b5')
 
 _conv_strings = []
 _conv_strings.append('ICONV 11172')
@@ -139,14 +144,18 @@ for uch in map(unichr, range(0xac00, 0xd7a3 + 1)):
     _conv_strings.append('OCONV %s %s' % (NFD(uch), uch))
 CONV_DEFINES = '\n'.join(_conv_strings)
 
+# MAP: 비슷한 성격의 자모
+# - 초성은 거센소리나 된소리처럼 같은 계열 초성 묶음
+# - 중성은 비슷한 발음 묶음
+# - 종성의 경우 받침 소리가 같은 발음 묶음
+
 map_list = [
     L_KIYEOK + L_SSANGKIYEOK + L_KHIEUKH,
     L_TIKEUT + L_SSANGTIKEUT + L_THIEUTH,
     L_PIEUP + L_SSANGPIEUP + L_PHIEUPH,
     L_SIOS + L_SSANGSIOS,
     L_CIEUC + L_SSANGCIEUC + L_CHIEUCH,
-    V_AE + V_E,
-    V_YAE + V_YE,
+    V_AE + V_E + V_YAE + V_YE,
     V_WAE + V_OE + V_WE,
     T_KIYEOK + T_SSANGKIYEOK + T_KIYEOK_SIOS + T_KHIEUKH,
     T_NIEUN + T_NIEUN_CIEUC + T_NIEUN_HIEUH,
@@ -164,13 +173,25 @@ for m in map_list:
 ## REP: 흔히 틀리는 목록
 
 rep_list = [
-    # ㅕ/ㅓ
-    (u'\u1167', u'\u1165'),
     # 의존명사 앞에 띄어 쓰기
     (u'것', u'_것'),
     # 두벌식 순서 바뀜 - 
     (u'빈', T_PIEUP + u'니'),      # 하빈다, 스빈다, ...
     (V_O + u'나', V_WA + T_NIEUN), # 오나전 => 완전
+
+    ## 불규칙 용언의 활용을 잘못 썼을 경우에 대한 대치어 만들기. 단순
+    ## 탈락이나 자모 1개 변경처럼 hunspell의 suggestion 규칙에서
+    ## 처리하지 못하는 경우만.
+    # ㅂ불규칙
+    (T_PIEUP + u'아', u'와'),
+    (T_PIEUP + u'어', u'워'),
+    # 르불규칙
+    (u'르어', T_RIEUL + u'러'),
+    (u'르어', T_RIEUL + u'라'),
+    # 으불규칙
+    (V_EU + u'어', V_EO),
+    (V_EU + u'어', V_A),
+
     ## 활용
     # ㄹ런지 => ㄹ는지
     (T_RIEUL + u'런지', T_RIEUL + u'는지'),
@@ -244,6 +265,7 @@ josas = [('이', COND_T_ALL), ('가', COND_V_ALL),
          ('로는', COND_V_OR_RIEUL), ('으로는', COND_T_NOT_RIEUL),
          ('로도', COND_V_OR_RIEUL), ('으로도', COND_T_NOT_RIEUL),
          ('로서', COND_V_OR_RIEUL), ('으로서', COND_T_NOT_RIEUL),
+         ('로만', COND_V_OR_RIEUL), ('으로만', COND_T_NOT_RIEUL),
          ('로써', COND_V_OR_RIEUL), ('으로써', COND_T_NOT_RIEUL),
          ('로부터', COND_V_OR_RIEUL), ('으로부터', COND_T_NOT_RIEUL),
          # sorted list
@@ -279,12 +301,20 @@ josas = [('이', COND_T_ALL), ('가', COND_V_ALL),
          ('서', COND_ALL),           # '~에서' 준말
          ('에', COND_ALL),
          ('에게', COND_ALL),
+         ('에게는', COND_ALL),
+         ('에게도', COND_ALL),
+         ('에게만', COND_ALL),
          ('에게서', COND_ALL),
          ('에게서는', COND_ALL),
          ('에게서도', COND_ALL),
+         ('에게서만', COND_ALL),
          ('에는', COND_ALL),         # 에+'는' 보조사
          ('에도', COND_ALL),         # 에+'도' 보조사
+         ('에만', COND_ALL),         # 에+'만' 보조사
          ('에서', COND_ALL),
+         ('에서는', COND_ALL),       # 에서+'는' 보조사
+         ('에서도', COND_ALL),       # 에서+'도' 보조사
+         ('에서만', COND_ALL),       # 에서+'만' 보조사
          ('엔', COND_ALL),           # '에는' 준말
          ('야', COND_V_ALL),
          ('의', COND_ALL),

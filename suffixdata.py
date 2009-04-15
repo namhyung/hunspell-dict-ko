@@ -222,6 +222,7 @@ groups['-었-'] = [
                 [u'-\u1162\u11bb-', u'하', V_A], # 하였 -> 했
                 [u'-\u1167\u11bb-', V_I, V_I], # 이었 -> 였
                 [u'-\u11bb-', V_AE, ''], # 애었 -> 앴
+                [u'-\u11bb-', V_E, ''], # 에었 -> 엤
                 ],
       'after': ['#용언', '#이다', '-으시-'],
       'notcond': ['#ㄷ불규칙', '#ㅂ불규칙', '#ㅅ불규칙', '#ㅎ불규칙',
@@ -307,7 +308,8 @@ for klass in groups['-었-']:
 
 groups['-겠-'] = [
     { 'rules': [[u'-겠-', '', '']],
-      'after': ['#용언', '#이다', '-으시-', '-었-'],
+      # '-어야-'는 '-어야겠-' 형태를 위해서 허용
+      'after': ['#용언', '#이다', '-으시-', '-었-', '-어야-'],
     },
 ]
 
@@ -333,8 +335,9 @@ groups['-어'] = [
                 [u'-\u1162', u'하', V_A], # 하여 -> 해
                 [u'-\u1167', V_I, V_I], # 이어 -> 여
                 [u'-\u1162', V_AE, V_AE], # 애어 -> 애
+                [u'-\u1166', V_E, V_E], # 에어 -> 에
                 ],
-      'after': ['#용언', '-었-', '-으시-'],
+      'after': ['#용언', '-었-', '-겠-', '-으시-'],
       'notcond': ['#ㄷ불규칙', '#ㅂ불규칙', '#ㅅ불규칙', '#ㅎ불규칙',
                   '#러불규칙', '#르불규칙', '#우불규칙', '#으불규칙'],
     },
@@ -473,6 +476,17 @@ for klass in groups['-어야']:
         r[0] = r[0] + '야'
 groups['-어야'][0]['after'].append('#이다')
 
+#### -어야-
+# NOTE: 문법상 선어말 어미는 아니지만 '어야겠' ('어야하겠'의 준말)
+# 형태를 만드는 용도.
+# '-어야' 재활용
+groups['-어야-'] = copy_group(groups['-어야'])
+for klass in groups['-어야-']:
+    for r in klass['rules']:
+        r[0] = r[0] + '-'
+# '셨어야겠다' 따위로 확장되지 않도록 앞에 시제 선어말 어미 금지
+groups['-어야-'][0]['after'] = ['#용언', '#이다', '-으시-']
+
 #### 연결, 종결: -어야지, -아야지
 # '-어' 재활용
 groups['-어야지'] = copy_group(groups['-어'])
@@ -481,6 +495,13 @@ for klass in groups['-어야지']:
         r[0] = r[0] + '야지'
 groups['-어야지'][0]['after'].append('#이다')
 attach_emphasis(groups['-어야지'], ['요'])
+# 지요 -> 죠 준말
+for klass in groups['-어야지']:
+    expanded = []
+    for r in klass['rules']:
+        if r[0].endswith(u'지요'):
+            expanded.append([r[0][:-len(u'지요')] + u'죠'] + r[1:])
+    klass['rules'] += expanded
 
 #### 종결: -어요, -아요
 # '-어' 재활용
@@ -647,7 +668,7 @@ groups['-지'] = [
       'after': ['#용언', '#이다', '-으시-', '-었-', '-겠-'],
     },
 ]
-attach_emphasis(groups['-지'], ['요', '도'])
+attach_emphasis(groups['-지'], ['요', '도', '는'])
 # 지요 -> 죠 준말
 groups['-지'][0]['rules'].append([u'-죠', '', ''])
 
@@ -1062,6 +1083,20 @@ groups['-는다면'] = [
     },
 ]
 
+#### 종결: -ㄴ다면서, -는다면서
+groups['-는다면서'] = [
+    { 'rules': [[u'-\u11ab다면서', COND_V_ALL, ''],
+                [u'-\u11ab다면서', T_RIEUL, T_RIEUL],
+                [u'-는다면서', COND_T_NOT_RIEUL, ''],
+                [u'-\u11ab다며', COND_V_ALL, ''],
+                [u'-\u11ab다며', T_RIEUL, T_RIEUL],
+                [u'-는다며', COND_T_NOT_RIEUL, ''],
+                ],
+      'after': ['#동사', '-으시-'],
+    },
+]
+attach_emphasis(groups['-는다면서'], ['요'])
+
 #### 종결: -는군
 groups['-는군'] = [
     { 'rules': [[u'-는군', COND_NOT_RIEUL, ''],
@@ -1337,9 +1372,16 @@ groups['-으냐'] = [
     { 'rules': [[u'-냐', COND_V_ALL, ''],
                 [u'-냐', T_RIEUL, T_RIEUL],
                 [u'-으냐', COND_T_NOT_RIEUL, '']],
-      'after': ['#형용사', '#이다', '-으시-', '-었-', '-겠-'],
+      'after': ['#형용사', '#이다'],
       'notafter': ['^.*있다$', '^.*없다$'],
       'notcond': ['#ㄷ불규칙', '#ㅂ불규칙', '#ㅅ불규칙', '#ㅎ불규칙'],
+    },
+    # NOTE: 어간과 결합하지 않고 '-었-' 및 '-겠-' 선어말 어미와 결합할
+    # 경우에는 받침이 있음에도 "-었으냐", "-겠느냐"가 아니라 "-었냐",
+    # "-겠냐" 형태가 되므로, 선어말 어미 결합하는 부분은 별도로 구분해
+    # 모든 음절과 결합을 허용한다.
+    { 'rules': [[u'-냐', '', '']],
+      'after': ['-으시-', '-었-', '-겠-'],
     },
     # ㄷ불규칙
     TIKEUT_IRREGULAR_TYPICAL_CLASS(u'-으냐', ['#형용사']),
@@ -1351,6 +1393,70 @@ groups['-으냐'] = [
     HIEUH_IRREGULAR_TYPICAL_CLASS(u'-냐', ['#형용사']),
 ]
 
+#### 종결: -으냐고 (형용사)
+groups['-으냐고'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐고']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '고'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐네 (-으냐고 하네)
+groups['-으냐네'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐네']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '네'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐는 (-으냐고 하는)
+groups['-으냐는'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐는']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '는'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐니 (-으냐고 하니)
+groups['-으냐니'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐니']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '니'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐니까 (-으냐고 하니)
+groups['-으냐니까'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐니까']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '니까'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐며 (-으냐고 하며)
+groups['-으냐며'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐며']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '며'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐면 (-으냐고 하면)
+groups['-으냐면'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐면']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '면'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -으냐면서 (-으냐고 하면서)
+groups['-으냐면서'] = [k.copy() for k in groups['-으냐']]
+for klass in groups['-으냐면서']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '면서'] + r[1:])
+    klass['rules'] = new_rule
+
 #### 종결: -느냐 (동사)
 groups['-느냐'] = [
     { 'rules': [[u'-느냐', COND_NOT_RIEUL, ''],
@@ -1358,6 +1464,70 @@ groups['-느냐'] = [
       'after': ['#동사', '^.*있다$', '^.*없다$', '^.*계시다$', '-으시-', '-었-', '-겠-'],
     },
 ]
+
+#### 종결: -느냐고 (동사)
+groups['-느냐고'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐고']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '고'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐네 (-느냐고 하네)
+groups['-느냐네'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐네']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '네'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐는 (-느냐고 하는)
+groups['-느냐는'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐는']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '는'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐니 (-느냐고 하니)
+groups['-느냐니'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐니']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '니'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐니까 (-느냐고 하니)
+groups['-느냐니까'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐니까']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '니까'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐며 (-느냐고 하며)
+groups['-느냐며'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐며']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '며'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐면 (-느냐고 하면)
+groups['-느냐면'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐면']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '면'] + r[1:])
+    klass['rules'] = new_rule
+
+#### 연결: -느냐면서 (-느냐고 하면서)
+groups['-느냐면서'] = [k.copy() for k in groups['-느냐']]
+for klass in groups['-느냐면서']:
+    new_rule = []
+    for r in klass['rules']:
+        new_rule.append([r[0] + '면서'] + r[1:])
+    klass['rules'] = new_rule
 
 #### 연결: -느니
 #### 종결: -느니
@@ -1576,4 +1746,46 @@ groups['-다니'] = [
       'after': ['#용언', '-으시-', '-었-', '-겠-'],
     },
 ]
+
+#### 연결: -자는 (-자고 하는)
+groups['-자는'] = [
+    { 'rules': [[u'-자는', '', '']],
+      'after': ['#동사'],
+    },
+]
+
+#### 연결: -던데
+groups['-던데'] = [
+    { 'rules': [[u'-던데', '', '']],
+      'after': ['#용언', '#이다', '-으시-', '-었-', '-겠-'],
+    },
+]
+
+#### 연결: -느라고, -느라
+groups['-느라고'] = [
+    { 'rules': [[u'-느라고', COND_NOT_RIEUL, ''],
+                [u'-느라고', T_RIEUL, T_RIEUL],
+                [u'-느라', COND_NOT_RIEUL, ''],
+                [u'-느라', T_RIEUL, T_RIEUL]],
+      'after': ['#동사', '-으시-'],
+    },
+]
+
+#### 종결: -ㄹ래, -을래
+groups['-을래'] = [
+    { 'rules': [[u'-%s래' % T_RIEUL, COND_V_ALL, ''],
+                [u'-%s래' % T_RIEUL, T_RIEUL, T_RIEUL],
+                [u'-을래', COND_NOT_RIEUL, '']],
+      'after': ['#동사'],
+      'notcond': ['#ㄷ불규칙', '#ㅂ불규칙', '#ㅅ불규칙'],
+    },
+    # ㄷ불규칙
+    TIKEUT_IRREGULAR_TYPICAL_CLASS(u'-을래', ['#동사']),
+    # ㅂ불규칙
+    PIEUP_IRREGULAR_TYPICAL_CLASS(u'-울래', ['#동사']),
+    # ㅅ불규칙
+    SIOS_IRREGULAR_TYPICAL_CLASS(u'-을래', ['#동사']),
+    # 동사이므로 ㅎ불규칙 해당 없음
+]
+attach_emphasis(groups['-을래'], ['요'])
 
