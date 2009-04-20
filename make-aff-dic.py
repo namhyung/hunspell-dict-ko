@@ -159,6 +159,8 @@ class Dictionary:
     def process(self):
         progress('복수형 확장')
         self.expand_plurals()
+        progress('동사 확장')
+        self.expand_noun_verbs()
         progress('보조용언 확장')
         self.expand_auxiliary()
         progress('플래그 계산')
@@ -255,6 +257,20 @@ class Dictionary:
             new_word.props = [p for p in word.props if p != '가산명사']
             new_word.stem = word.word
             new_words.append(new_word)
+        self.append(new_words)
+
+    def expand_noun_verbs(self):
+        new_words = []
+        nouns = [w for w in self.words if '명사' == w.pos]
+        for noun in nouns:
+            for prop in noun.props:
+                if not prop.startswith('동사확장:'):
+                    continue
+                suffix = prop.split(':')[1][1:]  # '동사확장:-하다'에서 '하다' 분리
+                new_word = Word()
+                new_word.word = noun.word + suffix
+                new_word.pos = '동사'
+                new_words.append(new_word)
         self.append(new_words)
 
     def expand_auxiliary(self):
