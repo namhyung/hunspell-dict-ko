@@ -254,7 +254,7 @@ class Dictionary:
             new_word = Word()
             new_word.word = word.word + '들'
             new_word.pos = word.pos
-            new_word.props = [p for p in word.props if p != '가산명사']
+            new_word.props = [p for p in word.props if p != '가산명사' and not p.startswith('동사확장:')]
             new_word.stem = word.word
             new_words.append(new_word)
         self.append(new_words)
